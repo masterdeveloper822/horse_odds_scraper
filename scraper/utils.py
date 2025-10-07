@@ -1,5 +1,10 @@
 def convert_to_decimal(odds_raw):
     odds_raw = odds_raw.strip()
+    
+    # Handle empty or invalid cases
+    if not odds_raw or odds_raw == "-" or odds_raw == "+":
+        return None
+    
     # Fractional e.g. "5/2"
     if "/" in odds_raw:
         num, denom = odds_raw.split("/")
