@@ -1,46 +1,36 @@
 import asyncio
-from db.db import session
-from db.models import Race, Horse, Runner, Odds
 from scraper.coral_scraper_playwright import scrape_coral
 from scraper.ladbrokes_scraper_playwright import scrape_ladbrokes
-
-async def save_to_db(scraper_func, bookmaker_name):
-    races_data = await scraper_func()
-
-    for race in races_data:
-        # Create Race record
-        race_obj = Race(bookmaker=bookmaker_name, race_name=race["race_name"])
-        session.add(race_obj)
-        session.commit()  # commit to get race_obj.id
-
-        for r in race["runners"]:
-            # Check if horse already exists
-            horse_obj = session.query(Horse).filter_by(name=r["horse_name"]).first()
-            if not horse_obj:
-                horse_obj = Horse(name=r["horse_name"])
-                session.add(horse_obj)
-                session.commit()
-
-            # Link runner to race
-            runner_obj = Runner(race_id=race_obj.id, horse_id=horse_obj.id, horse_name=r["horse_name"])
-            session.add(runner_obj)
-            session.commit()
-
-            # Store odds
-            odds_obj = Odds(
-                runner_id=runner_obj.id,
-                bookmaker=bookmaker_name,
-                odds_decimal=r["odds_decimal"],
-                odds_raw=r["odds_raw"]
-            )
-            session.add(odds_obj)
-            session.commit()
-
-    print(f"✅ Saved {len(races_data)} {bookmaker_name} races into DB.")
+from scraper.skybet_scraper_playwright import scrape_skybet
+from scraper.paddypower_scraper_playwright import scrape_paddypower
+from scraper.betfair_scraper_playwright import scrape_betfair
+from scraper.comparison import find_value_opportunities
 
 async def main():
-    await save_to_db(scrape_coral, "Coral")
-    await save_to_db(scrape_ladbrokes, "Ladbrokes")
+    while True:
+        coral_data = await scrape_coral()
+        ladbrokes_data = await scrape_ladbrokes()
+        skybet_data = await scrape_skybet()
+        paddypower_data = await scrape_paddypower()
+        betfair_data = await scrape_betfair()
+
+        races_by_bookmaker = {"Coral": coral_data, "Ladbrokes": ladbrokes_data, "Skybet": skybet_data, "Paddypower": paddypower_data, "Betfair": betfair_data}
+        alerts = find_value_opportunities(races_by_bookmaker, threshold=0.01)
+
+        if alerts:
+            for alert in alerts:
+                print(
+                    f"📢 Value Alert!\n"
+                    f"🏇 {alert['race']} | 🐎 {alert['horse']}\n"
+                    f"💰 Best: {alert['best']['odds_raw']} ({alert['best']['bookmaker']})\n"
+                    f"❌ Worst: {alert['worst']['odds_raw']} ({alert['worst']['bookmaker']})\n"
+                    f"📈 Diff: {alert['diff_pct']}%\n"
+                )
+        else:
+            print("No opportunities this round.")
+
+        # Wait 60 seconds before scraping again
+        await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(main())
